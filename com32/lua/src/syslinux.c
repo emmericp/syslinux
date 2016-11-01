@@ -280,6 +280,15 @@ static int sl_filename(lua_State * L)
     return 1;
 }
 
+static int sl_filedata(lua_State * L)
+{
+    const syslinux_file *file = luaL_checkudata(L, 1, SYSLINUX_FILE);
+
+    lua_pushlstring(L, file->data, file->size);
+
+    return 1;
+}
+
 static int sl_initramfs_init(lua_State * L)
 {
     struct initramfs *ir = lua_newuserdata (L, sizeof (*ir));
@@ -303,20 +312,41 @@ static int sl_initramfs_load_archive(lua_State * L)
 static int sl_initramfs_add_file(lua_State * L)
 {
     const char *filename = luaL_checkstring(L, 2);
-    size_t file_len;
-    const char *file_data = luaL_optlstring (L, 3, NULL, &file_len);
     void *data = NULL;
+    size_t data_len = 0;
+    const char *string_data;
+    const syslinux_file *file_data;
 
-    if (file_len) {
-        data = malloc (file_len);
+    if (lua_isstring(L, 3)) {
+        /* called with file contents as string */
+        string_data = lua_tolstring(L, 3, &data_len);
+        data = malloc (data_len);
         if (!data) return luaL_error (L, "Out of memory");
-        memcpy (data, file_data, file_len);
-    }
+        memcpy(data, string_data, data_len);
+    } else if (lua_isuserdata(L, 3)) {
+        /* called with a SYSLINUX_FILE object */
+        file_data = luaL_checkudata(L, 3, SYSLINUX_FILE);
+        data = file_data->data;
+        data_len = file_data->size;
+    } /* else: nil, just create an empty file */
+
     if (initramfs_add_file(luaL_checkudata(L, 1, SYSLINUX_INITRAMFS),
-                           data, file_len, file_len, filename,
-                           luaL_optint (L, 4, 0), luaL_optint (L, 5, 0755)))
+                           data, data_len, data_len, filename,
+                           luaL_optint (L, 5, 1), luaL_optint (L, 4, 0755)))
         return luaL_error (L, "Adding file %s to initramfs failed", filename);
-    lua_settop (L, 1);
+    lua_settop(L, 1);
+    return 1;
+}
+
+static int sl_initramfs_load_file(lua_State * L)
+{
+    const char *dst_filename = luaL_checkstring(L, 2);
+    const char *src_filename = luaL_checkstring(L, 3);
+    if (initramfs_load_file(luaL_checkudata(L, 1, SYSLINUX_INITRAMFS),
+                           src_filename, dst_filename,
+                           luaL_optint(L, 5, 1), luaL_optint(L, 4, 0755)))
+        return luaL_error (L, "Adding file %s to initramfs failed", dst_filename);
+    lua_settop(L, 1);
     return 1;
 }
 
@@ -461,6 +491,7 @@ static const luaL_Reg file_methods[] = {
     {"__gc", sl_unloadfile},
     {"name", sl_filename},
     {"size", sl_filesize},
+    {"data", sl_filedata},
     {NULL, NULL}
 };
 
@@ -468,6 +499,7 @@ static const luaL_Reg initramfs_methods[] = {
     {"__gc", sl_initramfs_purge},
     {"load", sl_initramfs_load_archive},
     {"add_file", sl_initramfs_add_file},
+    {"load_file", sl_initramfs_load_file},
     {"size", sl_initramfs_size},
     {NULL, NULL}
 };
