@@ -33,6 +33,7 @@ MODULES   += pci.c32
 MODULES   += syslinux.c32
 MODULES   += vesa.c32
 MODULES   += cmenu.c32
+MODULES   += ldisk.c32
 TESTFILES =
 
 OBJS	  = lua.o
